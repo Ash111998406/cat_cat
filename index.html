@@ -23,6 +23,8 @@
     height:100%;
     margin:0;
     overflow:hidden;
+    overscroll-behavior:none;
+    touch-action:none;
     background:#120d1c;
     font-family:'Nunito', sans-serif;
     color:var(--cream);
@@ -136,6 +138,38 @@
      player, it just decides when the last kittens make a run for it.
      (needs #hud prefixed to out-specificity the #hud .pill rule above) */
   #hud #timer-pill{ display:none; }
+  #pause-btn{
+    width:34px; height:34px;
+    flex-shrink:0;
+    border-radius:50%;
+    border:1px solid rgba(255,255,255,0.15);
+    background:rgba(0,0,0,0.25);
+    color:var(--cream);
+    font-family:inherit;
+    font-size:14px;
+    display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+  }
+  #pause-btn:active{ transform:scale(.9); }
+
+  /* ---------- Pause overlay ---------- */
+  #overlay-pause{
+    position:absolute; inset:0; z-index:25;
+    display:none; align-items:center; justify-content:center;
+    background:rgba(20,14,34,0.92);
+  }
+  #overlay-pause.active{ display:flex; }
+  .pause-card{
+    display:flex; flex-direction:column; align-items:center; gap:14px;
+    animation: cardin .4s cubic-bezier(.34,1.4,.6,1);
+  }
+  .pause-card h2{ color:var(--gold-2); font-size:clamp(24px,6cqmin,36px); margin:0 0 6px; }
+  .btn-ghost{
+    background:transparent;
+    border:2px solid rgba(255,255,255,0.3);
+    color:var(--cream);
+    box-shadow:none;
+  }
 
   /* ---------- Cage ---------- */
   #cage-wrap{
@@ -651,6 +685,7 @@
     <div id="hud">
       <div class="pill" id="counter">🐾 0 / 0</div>
       <div class="pill" id="timer-pill">⏱ <span id="timer">0</span>s</div>
+      <button id="pause-btn" aria-label="Pause">⏸</button>
     </div>
 
     <div id="cage-wrap">
@@ -680,6 +715,14 @@
           </div>
         </div>
         <div class="flash"></div>
+      </div>
+    </div>
+
+    <div id="overlay-pause">
+      <div class="pause-card">
+        <h2>Paused</h2>
+        <button class="btn" id="resume-btn">Resume</button>
+        <button class="btn btn-ghost" id="exit-btn">Exit to menu</button>
       </div>
     </div>
 
@@ -746,6 +789,10 @@
   var mamaQuote   = document.getElementById('mama-quote');
   var resultScore = document.getElementById('result-score');
   var playAgainBtn= document.getElementById('play-again');
+  var pauseBtn    = document.getElementById('pause-btn');
+  var overlayPause= document.getElementById('overlay-pause');
+  var resumeBtn   = document.getElementById('resume-btn');
+  var exitBtn     = document.getElementById('exit-btn');
 
   // cage bar decoration
   var cageBars = document.getElementById('cage-bars');
@@ -778,8 +825,29 @@
       timerId: null,
       lastTs: null,
       ended: false,
+      paused: false,
       stageRect: null
     };
+  }
+
+  function requestFullscreenSafely(){
+    var el = document.documentElement;
+    var request = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+    if(!request) return;
+    try{
+      var p = request.call(el);
+      if(p && p.catch) p.catch(function(){});
+    }catch(e){}
+  }
+
+  function exitFullscreenSafely(){
+    var exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+    var isFs = document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement;
+    if(!exit || !isFs) return;
+    try{
+      var p = exit.call(document);
+      if(p && p.catch) p.catch(function(){});
+    }catch(e){}
   }
 
   function buildSeats(n){
@@ -804,6 +872,7 @@
   function startLevel(levelId){
     var conf = LEVELS[levelId];
     resetState(conf, levelId);
+    requestFullscreenSafely();
 
     // reset visuals
     cageInterior.innerHTML='';
@@ -1232,13 +1301,44 @@
     }
   }
 
-  playAgainBtn.addEventListener('click', function(){
+  function returnToStart(){
+    if(state){
+      state.ended = true;
+      state.paused = false;
+      if(state.rafId) cancelAnimationFrame(state.rafId);
+      if(state.timerId) clearInterval(state.timerId);
+    }
     overlay.classList.remove('active');
     overlay.querySelectorAll('.confetti').forEach(function(el){ el.remove(); });
+    overlayPause.classList.remove('active');
     screenGame.classList.remove('active');
     screenStart.classList.add('active');
     clearRoamingCats();
     cageInterior.innerHTML='';
+    exitFullscreenSafely();
+  }
+
+  playAgainBtn.addEventListener('click', returnToStart);
+  exitBtn.addEventListener('click', returnToStart);
+
+  /* ---------------- pause ---------------- */
+  pauseBtn.addEventListener('click', function(){
+    if(!state || state.ended || state.paused) return;
+    state.paused = true;
+    if(state.rafId) cancelAnimationFrame(state.rafId);
+    if(state.timerId) clearInterval(state.timerId);
+    overlayPause.classList.add('active');
+  });
+
+  resumeBtn.addEventListener('click', function(){
+    if(!state || !state.paused) return;
+    state.paused = false;
+    overlayPause.classList.remove('active');
+    if(box.classList.contains('opened')){
+      state.lastTs = null;
+      state.rafId = requestAnimationFrame(loop);
+      startTimer();
+    }
   });
 
 })();
