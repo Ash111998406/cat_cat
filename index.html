@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Kitten Rescue — Tap the Box</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#221a33;
+    --panel:#2f2347;
+    --panel-2:#3a2c58;
+    --gold:#f4b860;
+    --gold-2:#ffd48a;
+    --coral:#e8896a;
+    --blush:#f3aab0;
+    --cream:#fbf3e7;
+    --shadow: 0 10px 30px rgba(0,0,0,0.35);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    height:100%;
+    margin:0;
+    overflow:hidden;
+    background:#120d1c;
+    font-family:'Nunito', sans-serif;
+    color:var(--cream);
+    -webkit-user-select:none;
+    user-select:none;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  /* #app is pinned to a phone-like aspect ratio and made a container-query
+     context so every internal size (cqw/cqh/cqmin) scales to this frame
+     instead of the raw browser viewport — desktop and mobile then render
+     the identical layout, just letterboxed on wide screens. */
+  #app{
+    position:relative;
+    width:min(100vw, calc(100dvh * 9 / 19.5));
+    height:min(100dvh, calc(100vw * 19.5 / 9));
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    background:
+      radial-gradient(1200px 800px at 50% -10%, #3a2c58 0%, var(--ink) 55%),
+      var(--ink);
+    border-radius:22px;
+    box-shadow:0 20px 60px rgba(0,0,0,.6);
+    container-type:size;
+  }
+  @media (max-width:600px){
+    #app{ border-radius:0; box-shadow:none; }
+  }
+
+  h1,h2,h3,.display{ font-family:'Baloo 2', sans-serif; }
+
+  /* ---------- Twinkle background ---------- */
+  .twinkles{ position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index:0; }
+  .twinkle{
+    position:absolute; width:3px; height:3px; border-radius:50%;
+    background:var(--cream); opacity:0.35;
+    animation: tw 3.2s ease-in-out infinite;
+  }
+  @keyframes tw{ 0%,100%{opacity:.15;} 50%{opacity:.7;} }
+
+  /* ---------- Screens ---------- */
+  .screen{
+    position:absolute; inset:0;
+    display:none;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    z-index:2;
+    padding:6cqmin 6cqw;
+    text-align:center;
+  }
+  .screen.active{ display:flex; }
+
+  #screen-start .eyebrow{
+    letter-spacing:.3em; text-transform:uppercase; font-size:11px;
+    color:var(--blush); font-weight:800; margin-bottom:10px;
+  }
+  #screen-start h1{
+    font-size:clamp(32px, 8cqmin, 64px);
+    margin:0 0 6px;
+    color:var(--gold-2);
+    text-shadow:0 4px 0 rgba(0,0,0,.25);
+  }
+  #screen-start p.sub{
+    max-width:520px; margin:0 auto 5cqmin; color:var(--cream); opacity:.85;
+    font-size:clamp(14px,2.4cqmin,18px); line-height:1.5;
+  }
+  .level-buttons{
+    display:flex; gap:16px; flex-wrap:wrap; justify-content:center; max-width:720px;
+  }
+  .level-card{
+    background:linear-gradient(160deg, var(--panel-2), var(--panel));
+    border:2px solid rgba(255,255,255,0.08);
+    border-radius:22px;
+    padding:22px 26px;
+    min-width:150px;
+    cursor:pointer;
+    box-shadow: var(--shadow);
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+    color:var(--cream);
+  }
+  .level-card:active{ transform: scale(.96); }
+  .level-card:hover{ transform: translateY(-4px); border-color:var(--gold); }
+  .level-card .lv-num{ font-family:'Baloo 2'; font-size:34px; color:var(--gold); }
+  .level-card .lv-name{ font-weight:800; margin:2px 0 8px; }
+  .level-card .lv-meta{ font-size:12.5px; opacity:.75; }
+
+  /* ---------- Game screen ---------- */
+  /* .screen defaults to align-items:center for the start screen's narrow
+     centered copy; the game screen's hud/cage/stage need to span the full
+     width instead, or they shrink-to-fit their mostly-absolute content
+     (this is what was collapsing the cage and hiding the mystery box). */
+  #screen-game{ padding:0; justify-content:flex-start; align-items:stretch; }
+  #hud{
+    width:100%;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:max(10px, env(safe-area-inset-top)) 4cqw 6px;
+    font-weight:800; font-size:clamp(12px,2.6cqmin,16px);
+    z-index:5;
+  }
+  #hud .pill{
+    background:rgba(0,0,0,0.25);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:999px;
+    padding:6px 14px;
+    display:flex; align-items:center; gap:6px;
+  }
+  /* countdown keeps running in the background — it is never shown to the
+     player, it just decides when the last kittens make a run for it.
+     (needs #hud prefixed to out-specificity the #hud .pill rule above) */
+  #hud #timer-pill{ display:none; }
+
+  /* ---------- Cage ---------- */
+  #cage-wrap{
+    position:relative;
+    margin: 2px 4cqw 10px;
+    z-index:4;
+  }
+  #cage{
+    position:relative;
+    border-radius:26px;
+    padding:14px 16px 10px;
+    min-height:16cqh;
+    background:
+      linear-gradient(180deg, #6b4a3a 0%, #55392c 100%);
+    box-shadow: inset 0 4px 10px rgba(0,0,0,0.35), var(--shadow);
+    border:3px solid #3f291f;
+    overflow:hidden;
+  }
+  #cage::before{
+    /* soft cushion floor */
+    content:"";
+    position:absolute; left:8px; right:8px; bottom:8px; height:46%;
+    background: repeating-linear-gradient(100deg, #e8896a, #e8896a 10px, #eda184 10px, #eda184 20px);
+    border-radius:16px;
+    opacity:.9;
+  }
+  #cage-bars{
+    position:absolute; inset:0;
+    display:flex; justify-content:space-evenly;
+    pointer-events:none;
+  }
+  #cage-bars span{
+    width:4px; margin-top:-6px; height:calc(100% + 12px);
+    background:linear-gradient(180deg,#dcb98a,#a9805a);
+    border-radius:3px;
+    box-shadow:0 0 0 1px rgba(0,0,0,.15);
+    opacity:.55;
+  }
+  #cage-label{
+    position:absolute; top:-11px; left:18px;
+    background:var(--gold); color:#3f2b12; font-family:'Baloo 2';
+    font-weight:700; font-size:12px; padding:3px 12px; border-radius:999px;
+    box-shadow:var(--shadow); z-index:2;
+  }
+  #cage-interior{
+    --seat-size:26px;
+    position:relative; z-index:2;
+    display:grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--seat-size), 1fr));
+    gap:6px;
+    align-content:flex-start;
+    justify-items:center;
+    padding-top:6px;
+    max-height:14cqh; overflow-y:auto;
+  }
+  #cage-interior::-webkit-scrollbar{ width:4px; }
+  #cage-interior::-webkit-scrollbar-thumb{ background:rgba(0,0,0,.25); border-radius:4px; }
+  /* one seat is pre-built per total kitten so the cage always shows how
+     many spots need filling, before any kitten is caught */
+  .cage-seat{
+    width:var(--seat-size); height:var(--seat-size);
+    border-radius:50%;
+    border:2px dashed rgba(255,255,255,.32);
+    opacity:.5;
+    display:flex; align-items:center; justify-content:center;
+    font-size:calc(var(--seat-size) * 0.55);
+    line-height:1;
+  }
+  .cage-seat.filled{
+    border-color:transparent;
+    opacity:1;
+    font-size:calc(var(--seat-size) * 0.85);
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,.35));
+    animation: settle .5s cubic-bezier(.34,1.56,.64,1), idlebob 2.6s ease-in-out infinite;
+    animation-delay: 0s, .5s;
+  }
+  @keyframes settle{ 0%{ transform:scale(0) rotate(-20deg); opacity:0;} 70%{ transform:scale(1.25) rotate(6deg); opacity:1;} 100%{ transform:scale(1) rotate(0);} }
+  @keyframes idlebob{ 0%,100%{ transform:translateY(0);} 50%{ transform:translateY(-3px);} }
+
+  /* ---------- Stage ---------- */
+  #stage{
+    position:relative;
+    flex:1;
+    overflow:hidden;
+    z-index:3;
+  }
+  #instructions{
+    position:absolute; left:50%; top:14%;
+    transform:translateX(-50%);
+    width:min(86cqw, 420px);
+    text-align:center;
+    font-weight:700;
+    font-size:clamp(13px,2.6cqmin,17px);
+    color:var(--cream);
+    text-shadow:0 2px 8px rgba(0,0,0,.5);
+    opacity:1;
+    transition:opacity .4s ease;
+    pointer-events:none;
+    z-index:6;
+  }
+  #instructions.hidden{ opacity:0; }
+
+  /* ---------- Mystery box ---------- */
+  #mystery-box{
+    position:absolute; left:50%; top:50%;
+    transform:translate(-50%,-50%);
+    width:clamp(120px,26cqmin,190px);
+    height:clamp(120px,26cqmin,190px);
+    z-index:4;
+    cursor:pointer;
+    touch-action:none;
+  }
+  #mystery-box .glow{
+    position:absolute; inset:-30%;
+    background:radial-gradient(circle, rgba(244,184,96,0.35) 0%, transparent 70%);
+    animation: breathe 2.4s ease-in-out infinite;
+    pointer-events:none;
+  }
+  @keyframes breathe{ 0%,100%{ opacity:.5; transform:scale(.9);} 50%{ opacity:1; transform:scale(1.05);} }
+  .box-body{
+    position:absolute; left:8%; right:8%; bottom:6%; top:34%;
+    background:linear-gradient(160deg, #4a3768, #241a38);
+    border-radius:14px;
+    border:3px solid #17112a;
+    box-shadow: var(--shadow), inset 0 0 20px rgba(0,0,0,.4);
+  }
+  .box-body::after{
+    content:"?";
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-family:'Baloo 2'; font-size:clamp(30px,7cqmin,46px); color:var(--gold);
+    text-shadow:0 0 12px rgba(244,184,96,.7);
+    animation: qwiggle 2.4s ease-in-out infinite;
+  }
+  @keyframes qwiggle{ 0%,100%{ transform:rotate(-4deg);} 50%{ transform:rotate(4deg);} }
+  .lid{
+    position:absolute; left:6%; right:6%; top:22%; height:26%;
+    background:linear-gradient(160deg, #5c4680, #382957);
+    border:3px solid #17112a;
+    border-radius:10px;
+    box-shadow:var(--shadow);
+    transform-origin: center bottom;
+    transition: transform .6s cubic-bezier(.34,1.2,.5,1), opacity .6s ease;
+  }
+  #mystery-box.opened .lid-left{ transform: translateY(-4%) rotate(-100deg) translateX(-30%); opacity:0; }
+  #mystery-box.opened .lid-right{ transform: translateY(-4%) rotate(100deg) translateX(30%); opacity:0; }
+  #mystery-box.opened .box-body{ box-shadow:var(--shadow), inset 0 0 30px rgba(0,0,0,.7); }
+  #mystery-box.opened .box-body::after{ content:""; }
+  #mystery-box.opened .glow{ animation:none; opacity:0; transition:opacity .5s ease .3s; }
+  .flash{
+    position:absolute; inset:-20%;
+    background:radial-gradient(circle, rgba(255,255,255,0.9), transparent 60%);
+    opacity:0; pointer-events:none;
+  }
+  #mystery-box.opened .flash{ animation: flashpop .5s ease-out; }
+  @keyframes flashpop{ 0%{opacity:0;} 15%{opacity:1;} 100%{opacity:0;} }
+
+  /* mama cat pops up out of the box like a jack-in-the-box the moment it
+     opens, then ducks back down as the kittens scatter past her */
+  .mama-peek{
+    position:absolute; left:50%; top:0;
+    width:clamp(46px,13cqmin,84px);
+    height:clamp(46px,13cqmin,84px);
+    transform:translate(-50%,45%) scale(.3) rotate(-10deg);
+    opacity:0;
+    pointer-events:none;
+    z-index:6;
+    filter:drop-shadow(0 6px 8px rgba(0,0,0,.45));
+  }
+  .mama-peek .cat-face{ width:100%; height:100%; }
+  #mystery-box.opened .mama-peek{
+    animation: mamaPeek 1.5s cubic-bezier(.34,1.4,.5,1) forwards;
+  }
+  @keyframes mamaPeek{
+    0%{ opacity:0; transform:translate(-50%,45%) scale(.3) rotate(-10deg); }
+    30%{ opacity:1; transform:translate(-50%,-70%) scale(1.2) rotate(6deg); }
+    50%{ transform:translate(-50%,-60%) scale(1) rotate(-3deg); }
+    75%{ opacity:1; transform:translate(-50%,-62%) scale(1.05) rotate(2deg); }
+    100%{ opacity:0; transform:translate(-50%,10%) scale(.5) rotate(0deg); }
+  }
+
+  /* ---------- Reusable expressive mama-cat face (box peek + result screen) ----------
+     Same shaded-gradient construction as the roaming critters, but a static
+     front-facing head so its eyes/mouth can carry mood state (happy/cry/joy). */
+  .cat-face{
+    --fur-light:#ffe3ae; --fur:#f2a35a; --fur-dark:#c97730;
+    position:relative;
+    display:inline-block;
+  }
+  .cf-head{
+    position:absolute; inset:10%;
+    border-radius:50%;
+    background:radial-gradient(circle at 35% 28%, var(--fur-light), var(--fur) 55%, var(--fur-dark) 100%);
+    box-shadow: inset -6px -6px 10px rgba(0,0,0,.25), 0 6px 10px rgba(0,0,0,.35);
+  }
+  .cf-ear{
+    position:absolute; width:34%; height:34%;
+    background:var(--fur);
+    clip-path:polygon(50% 0%, 0% 100%, 100% 100%);
+    filter:drop-shadow(0 2px 2px rgba(0,0,0,.25));
+  }
+  .cf-ear::after{
+    content:"";
+    position:absolute; left:26%; top:40%; width:46%; height:46%;
+    background:#ffb3c0;
+    clip-path:polygon(50% 0%, 0% 100%, 100% 100%);
+  }
+  .cf-ear-l{ left:-2%; top:-12%; transform:rotate(-18deg); }
+  .cf-ear-r{ right:-2%; top:-12%; transform:rotate(18deg); }
+  .cf-eye{
+    position:absolute; width:15%; height:15%; top:38%;
+    background:#211930; border-radius:50%;
+    transition: all .2s ease;
+  }
+  .cf-eye::after{
+    content:"";
+    position:absolute; left:22%; top:14%; width:34%; height:34%;
+    background:rgba(255,255,255,.85); border-radius:50%;
+  }
+  .cf-eye-l{ left:22%; }
+  .cf-eye-r{ right:22%; }
+  .cf-nose{
+    position:absolute; left:50%; top:54%;
+    width:10%; height:7%;
+    background:#e2867f;
+    border-radius:50% 50% 50% 50% / 40% 40% 60% 60%;
+    transform:translateX(-50%);
+  }
+  .cf-mouth{
+    position:absolute; left:50%; top:58%; width:26%; height:12%;
+    transform:translateX(-50%);
+    border-bottom:3px solid #3a2b40;
+    border-radius:0 0 50% 50%;
+    transition: all .2s ease;
+  }
+  .cf-cheek{
+    position:absolute; top:52%; width:14%; height:10%;
+    background:radial-gradient(circle, rgba(255,140,160,.55), transparent 70%);
+    border-radius:50%;
+  }
+  .cf-cheek-l{ left:4%; }
+  .cf-cheek-r{ right:4%; }
+  .cf-tear{
+    position:absolute; top:46%; width:9%; height:13%;
+    background:#8fd0ff;
+    border-radius:50% 50% 50% 50% / 60% 60% 40% 40%;
+    animation: cftear 1.3s ease-in infinite;
+  }
+  .cf-tear-l{ left:17%; animation-delay:0s; }
+  .cf-tear-r{ right:17%; animation-delay:.5s; }
+  @keyframes cftear{
+    0%{ transform:translateY(0) scale(.4); opacity:0; }
+    25%{ opacity:1; transform:translateY(10%) scale(1); }
+    100%{ transform:translateY(90%) scale(.7); opacity:0; }
+  }
+  /* sad: eyes close to downward arcs, mouth flips to a frown */
+  .cf-mood-cry .cf-eye{
+    height:5%; top:44%;
+    background:transparent;
+    border-bottom:3px solid #241a2e;
+    border-radius:0 0 50% 50% / 0 0 100% 100%;
+  }
+  .cf-mood-cry .cf-eye::after{ content:none; }
+  .cf-mood-cry .cf-mouth{
+    top:62%;
+    border-bottom:none;
+    border-top:3px solid #3a2b40;
+    border-radius:50% 50% 0 0;
+  }
+  /* joyful: eyes widen and sparkle, mouth opens into a big smile, cheeks blush */
+  .cf-mood-joy .cf-eye{ height:17%; top:36%; }
+  .cf-mood-joy .cf-mouth{
+    width:34%; height:16%;
+    border-bottom-width:4px;
+    border-radius:0 0 50% 50%;
+  }
+
+  /* mama holds her reward in her own paws instead of a sticker floating
+     beside her — one built character, not two glued-together pieces */
+  .cf-paw-arm{
+    position:absolute; bottom:-2%;
+    width:22%; height:20%;
+    background:radial-gradient(circle at 35% 30%, var(--fur-light), var(--fur) 60%, var(--fur-dark) 100%);
+    border-radius:50%;
+    box-shadow: inset -3px -3px 5px rgba(0,0,0,.2), 0 2px 4px rgba(0,0,0,.3);
+  }
+  .cf-paw-arm-l{ left:14%; transform:rotate(-12deg); }
+  .cf-paw-arm-r{ right:14%; transform:rotate(12deg); }
+  .cf-gift{
+    position:absolute; left:50%; bottom:-14%;
+    transform:translateX(-50%);
+    font-size:0.42em;
+    line-height:1;
+    animation: giftpresent 1.6s ease-in-out infinite;
+    filter:drop-shadow(0 3px 3px rgba(0,0,0,.35));
+  }
+  @keyframes giftpresent{
+    0%,100%{ transform:translateX(-50%) translateY(0) rotate(-5deg); }
+    50%{ transform:translateX(-50%) translateY(-8%) rotate(5deg); }
+  }
+
+  /* ---------- Roaming cats: built from shaded divs, not a sticker ----------
+     Each cat carries its own --fur-light/--fur/--fur-dark custom properties
+     (assigned per-cat in JS) so gradient shading on the body/head reads as
+     rounded 3D volume instead of a flat icon. Only the caged kittens (see
+     .cage-seat) stay as plain emoji stickers, per design. */
+  .cat{
+    position:absolute;
+    user-select:none;
+    touch-action:none;
+    cursor:grab;
+    z-index:5;
+    will-change: left, top;
+  }
+  .critter{
+    position:relative; width:100%; height:100%;
+    animation: catbob var(--run-speed, .34s) ease-in-out infinite;
+    filter: drop-shadow(0 3px 3px rgba(0,0,0,.35));
+  }
+  .cat.dragging{ cursor:grabbing; z-index:50; }
+  .cat.dragging .critter{ animation-play-state:paused; transform:scale(1.15); }
+  .cat.fleeing{ transition: transform 1s ease-in, opacity .9s ease-in; opacity:0; }
+  @keyframes catbob{ 0%,100%{ transform:translateY(0);} 50%{ transform:translateY(-8%);} }
+
+  .c-shadow{
+    position:absolute; left:50%; bottom:-6%;
+    width:62%; height:16%;
+    background:radial-gradient(ellipse at center, rgba(0,0,0,.45), transparent 72%);
+    transform:translateX(-50%);
+  }
+  .c-tail{
+    position:absolute; right:2%; bottom:30%;
+    width:42%; height:14%;
+    background:linear-gradient(100deg, var(--fur-dark), var(--fur));
+    border-radius:50% 50% 50% 10% / 70% 70% 30% 30%;
+    transform-origin:0% 60%;
+    animation: tailswish calc(var(--run-speed, .34s) * 2.6) ease-in-out infinite;
+  }
+  @keyframes tailswish{ 0%,100%{ transform:rotate(8deg);} 50%{ transform:rotate(-18deg);} }
+  .c-body{
+    position:absolute; left:14%; top:34%;
+    width:66%; height:52%;
+    border-radius:50% 50% 46% 46% / 60% 60% 40% 40%;
+    background:radial-gradient(circle at 35% 25%, var(--fur-light), var(--fur) 55%, var(--fur-dark) 100%);
+    box-shadow: inset -5px -5px 8px rgba(0,0,0,.25);
+  }
+  .c-head{
+    position:absolute; left:4%; top:0%;
+    width:56%; height:56%;
+    border-radius:50%;
+    background:radial-gradient(circle at 35% 28%, var(--fur-light), var(--fur) 55%, var(--fur-dark) 100%);
+    box-shadow: inset -4px -4px 7px rgba(0,0,0,.22);
+  }
+  .c-ear{
+    position:absolute; width:36%; height:36%;
+    background:var(--fur);
+    clip-path:polygon(50% 0%, 0% 100%, 100% 100%);
+  }
+  .c-ear::after{
+    content:"";
+    position:absolute; left:26%; top:42%; width:46%; height:46%;
+    background:#ffb3c0;
+    clip-path:polygon(50% 0%, 0% 100%, 100% 100%);
+  }
+  .c-ear-l{ left:-4%; top:-16%; transform:rotate(-20deg); }
+  .c-ear-r{ right:-4%; top:-16%; transform:rotate(20deg); }
+  .c-eye{
+    position:absolute; width:14%; height:14%; top:40%;
+    background:#211930; border-radius:50%;
+  }
+  .c-eye-l{ left:20%; }
+  .c-eye-r{ right:20%; }
+  .c-nose{
+    position:absolute; left:50%; top:54%;
+    width:10%; height:8%;
+    background:#e2867f;
+    border-radius:50% 50% 50% 50% / 40% 40% 60% 60%;
+    transform:translateX(-50%);
+  }
+  .c-paw{
+    position:absolute; width:15%; height:13%;
+    background:var(--fur-dark);
+    border-radius:50%;
+    bottom:-2%;
+  }
+  .c-paw-fl{ left:16%; animation: pawbounce var(--run-speed,.34s) ease-in-out infinite; }
+  .c-paw-fr{ right:16%; animation: pawbounce var(--run-speed,.34s) ease-in-out infinite calc(var(--run-speed,.34s) * -0.5); }
+  .c-paw-bl{ left:26%; bottom:6%; animation: pawbounce var(--run-speed,.34s) ease-in-out infinite calc(var(--run-speed,.34s) * -0.5); }
+  .c-paw-br{ right:26%; bottom:6%; animation: pawbounce var(--run-speed,.34s) ease-in-out infinite; }
+  @keyframes pawbounce{ 0%,100%{ transform:translateY(0) scaleY(1);} 50%{ transform:translateY(-18%) scaleY(.85);} }
+
+  /* ---------- Result overlay ---------- */
+  #overlay-result{
+    position:absolute; inset:0; z-index:20;
+    display:none; align-items:center; justify-content:center;
+    background:radial-gradient(circle at 50% 40%, rgba(58,44,88,0.92), rgba(20,14,34,0.97));
+    padding:6cqw;
+    text-align:center;
+  }
+  #overlay-result.active{ display:flex; }
+  .result-card{
+    display:flex; flex-direction:column; align-items:center;
+    animation: cardin .5s cubic-bezier(.34,1.4,.6,1);
+    max-width:480px;
+  }
+  @keyframes cardin{ from{ transform:scale(.7) translateY(20px); opacity:0;} to{ transform:scale(1) translateY(0); opacity:1;} }
+  .mama-emojis{
+    position:relative;
+    font-size:clamp(56px,14cqmin,96px);
+    display:flex; align-items:center; justify-content:center; gap:6px;
+    margin-bottom:24px;
+    animation: mamapop .7s cubic-bezier(.34,1.56,.64,1);
+  }
+  @keyframes mamapop{ 0%{ transform:translateY(60px) scale(.4); opacity:0;} 60%{ transform:translateY(-8px) scale(1.1); opacity:1;} 100%{ transform:translateY(0) scale(1);} }
+  .mama-emojis .cat-face{ width:clamp(56px,14cqmin,96px); height:clamp(56px,14cqmin,96px); }
+
+  /* extra looping reaction layered on top of the pop-in, so mama visibly
+     cries on a bad rescue and hops for joy on a great one */
+  .mama-emojis.mood-cry{ animation: mamapop .7s cubic-bezier(.34,1.56,.64,1), sadshiver 2.2s ease-in-out .7s infinite; }
+  @keyframes sadshiver{
+    0%,100%{ transform:translateY(0) rotate(0deg); }
+    15%{ transform:translateY(2px) rotate(-4deg); }
+    30%{ transform:translateY(0) rotate(4deg); }
+    45%{ transform:translateY(2px) rotate(-3deg); }
+    60%{ transform:translateY(0) rotate(0deg); }
+  }
+  .mama-emojis.mood-joy{ animation: mamapop .7s cubic-bezier(.34,1.56,.64,1), joyhop 1s ease-in-out .7s infinite; }
+  @keyframes joyhop{
+    0%,100%{ transform:translateY(0) scale(1); }
+    30%{ transform:translateY(-16px) scale(1.06); }
+    55%{ transform:translateY(0) scale(.96); }
+    75%{ transform:translateY(-6px) scale(1.02); }
+  }
+  .mama-quote{
+    position:relative;
+    background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.15);
+    border-radius:14px;
+    padding:8px 16px;
+    margin:0 0 16px;
+    font-style:italic;
+    font-size:clamp(12.5px,2.2cqmin,15px);
+    color:var(--gold-2);
+    max-width:320px;
+  }
+  .mama-quote::after{
+    content:"";
+    position:absolute; left:50%; top:-8px; transform:translateX(-50%);
+    border-left:7px solid transparent; border-right:7px solid transparent;
+    border-bottom:8px solid rgba(255,255,255,.12);
+  }
+  #result-title{ font-size:clamp(22px,5cqmin,32px); margin:0 0 6px; color:var(--gold-2); }
+  #result-sub{ font-size:clamp(14px,2.6cqmin,18px); opacity:.9; margin:0 0 4px; max-width:420px; }
+  #result-score{ font-weight:800; color:var(--blush); margin:4px 0 22px; font-size:clamp(14px,2.6cqmin,18px); }
+
+  .btn{
+    font-family:'Baloo 2'; font-weight:700; font-size:clamp(14px,2.6cqmin,18px);
+    background:linear-gradient(160deg, var(--gold-2), var(--gold));
+    color:#3f2b12;
+    border:none; border-radius:999px;
+    padding:14px 34px;
+    cursor:pointer;
+    box-shadow:var(--shadow);
+    transition:transform .12s ease;
+  }
+  .btn:active{ transform:scale(.95); }
+
+  .confetti{
+    position:absolute; top:-10%;
+    font-size:22px;
+    animation: fall linear forwards;
+    pointer-events:none;
+  }
+  @keyframes fall{
+    to{ transform: translateY(120cqh) rotate(360deg); opacity:0.2; }
+  }
+
+  @container (max-width: 420px){
+    .level-buttons{ gap:10px; }
+    .level-card{ padding:16px 18px; min-width:120px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="twinkles" id="twinkles"></div>
+
+  <!-- START SCREEN -->
+  <div class="screen active" id="screen-start">
+    <div class="eyebrow">a tiny rescue game</div>
+    <h1>Kitten Rescue</h1>
+    <p class="sub">A mysterious box is hiding something. Tap it open, then drag every runaway kitten into the cozy cage before time runs out — mama cat is watching.</p>
+    <div class="level-buttons">
+      <div class="level-card" data-level="1">
+        <div class="lv-num">01</div>
+        <div class="lv-name">Gentle Litter</div>
+        <div class="lv-meta">10 kittens · 40s</div>
+      </div>
+      <div class="level-card" data-level="2">
+        <div class="lv-num">02</div>
+        <div class="lv-name">Busy Litter</div>
+        <div class="lv-meta">20 kittens · 60s</div>
+      </div>
+      <div class="level-card" data-level="3">
+        <div class="lv-num">03</div>
+        <div class="lv-name">Chaos Litter</div>
+        <div class="lv-meta">30 kittens · 85s</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GAME SCREEN -->
+  <div class="screen" id="screen-game">
+    <div id="hud">
+      <div class="pill" id="counter">🐾 0 / 0</div>
+      <div class="pill" id="timer-pill">⏱ <span id="timer">0</span>s</div>
+    </div>
+
+    <div id="cage-wrap">
+      <div id="cage-label">Cozy Cage</div>
+      <div id="cage">
+        <div id="cage-bars"></div>
+        <div id="cage-interior"></div>
+      </div>
+    </div>
+
+    <div id="stage">
+      <div id="instructions">Tap or click the box to start the game and prevent the animals from running away.</div>
+      <div id="mystery-box">
+        <div class="glow"></div>
+        <div class="lid lid-left"></div>
+        <div class="lid lid-right"></div>
+        <div class="box-body"></div>
+        <div class="mama-peek">
+          <div class="cat-face">
+            <div class="cf-ear cf-ear-l"></div>
+            <div class="cf-ear cf-ear-r"></div>
+            <div class="cf-head"></div>
+            <div class="cf-eye cf-eye-l"></div>
+            <div class="cf-eye cf-eye-r"></div>
+            <div class="cf-nose"></div>
+            <div class="cf-mouth"></div>
+          </div>
+        </div>
+        <div class="flash"></div>
+      </div>
+    </div>
+
+    <div id="overlay-result">
+      <div class="result-card">
+        <div class="mama-emojis" id="mama-emojis"></div>
+        <p class="mama-quote" id="mama-quote"></p>
+        <h2 id="result-title"></h2>
+        <p id="result-sub"></p>
+        <p id="result-score"></p>
+        <button class="btn" id="play-again">Play Again</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- background twinkles ---------------- */
+  var twEl = document.getElementById('twinkles');
+  for(var i=0;i<40;i++){
+    var t = document.createElement('div');
+    t.className='twinkle';
+    t.style.left = (Math.random()*100)+'%';
+    t.style.top = (Math.random()*100)+'%';
+    t.style.animationDelay = (Math.random()*3)+'s';
+    t.style.width = t.style.height = (1+Math.random()*2)+'px';
+    twEl.appendChild(t);
+  }
+
+  /* ---------------- level config ---------------- */
+  var LEVELS = {
+    1: { count:10, time:40, speedMin:15, speedMax:22, size:'clamp(46px,10cqmin,90px)' },
+    2: { count:20, time:60, speedMin:9,  speedMax:14, size:'clamp(40px,8cqmin,78px)'  },
+    3: { count:30, time:85, speedMin:5,  speedMax:8,  size:'clamp(34px,6.5cqmin,64px)' }
+  };
+  var CAT_EMOJIS = ['🐱','🐈'];    // caged kittens stay simple stickers
+  var FUR_PALETTE = [               // roaming kittens are shaded 3D critters
+    { light:'#ffd9a0', base:'#f2a35a', dark:'#c97730' }, // orange tabby
+    { light:'#e6e6ee', base:'#aaaab8', dark:'#6f6f80' }, // gray
+    { light:'#fff3d9', base:'#f0d9a3', dark:'#c9a968' }, // cream
+    { light:'#d1a377', base:'#8a5c3a', dark:'#5c3a22' }, // chocolate
+    { light:'#6b6478', base:'#3c3648', dark:'#211c2c' }, // charcoal
+    { light:'#ffffff', base:'#eeecf2', dark:'#c7c2d1' }  // white
+  ];
+
+  /* ---------------- elements ---------------- */
+  var screenStart = document.getElementById('screen-start');
+  var screenGame  = document.getElementById('screen-game');
+  var stage       = document.getElementById('stage');
+  var box         = document.getElementById('mystery-box');
+  var instructions= document.getElementById('instructions');
+  var cageWrap    = document.getElementById('cage-wrap');
+  var cageInterior= document.getElementById('cage-interior');
+  var counterEl   = document.getElementById('counter');
+  var timerEl     = document.getElementById('timer');
+  var timerPill   = document.getElementById('timer-pill');
+  var overlay     = document.getElementById('overlay-result');
+  var mamaEmojis  = document.getElementById('mama-emojis');
+  var resultTitle = document.getElementById('result-title');
+  var resultSub   = document.getElementById('result-sub');
+  var mamaQuote   = document.getElementById('mama-quote');
+  var resultScore = document.getElementById('result-score');
+  var playAgainBtn= document.getElementById('play-again');
+
+  // cage bar decoration
+  var cageBars = document.getElementById('cage-bars');
+  for(var b=0;b<14;b++){
+    var bar = document.createElement('span');
+    cageBars.appendChild(bar);
+  }
+
+  /* ---------------- drag layer (fixed, escapes stage clipping) ---------------- */
+  var dragLayer = document.createElement('div');
+  dragLayer.style.position='fixed';
+  dragLayer.style.inset='0';
+  dragLayer.style.zIndex='40';
+  dragLayer.style.pointerEvents='none';
+  document.body.appendChild(dragLayer);
+
+  /* ---------------- state ---------------- */
+  var state = null;
+
+  function resetState(levelConf, levelId){
+    state = {
+      levelId: levelId,
+      conf: levelConf,
+      total: levelConf.count,
+      collected: 0,
+      cats: [],          // active roaming cat objects
+      seats: [],         // pre-built cage seat elements, one per total kitten
+      timeLeft: levelConf.time,
+      rafId: null,
+      timerId: null,
+      lastTs: null,
+      ended: false,
+      stageRect: null
+    };
+  }
+
+  function buildSeats(n){
+    var seatSize = n<=10 ? 32 : (n<=20 ? 26 : 20);
+    cageInterior.style.setProperty('--seat-size', seatSize+'px');
+    for(var i=0;i<n;i++){
+      var seat = document.createElement('div');
+      seat.className='cage-seat';
+      cageInterior.appendChild(seat);
+      state.seats.push(seat);
+    }
+  }
+
+  /* ---------------- level select ---------------- */
+  document.querySelectorAll('.level-card').forEach(function(card){
+    card.addEventListener('click', function(){
+      var lvl = parseInt(card.getAttribute('data-level'),10);
+      startLevel(lvl);
+    });
+  });
+
+  function startLevel(levelId){
+    var conf = LEVELS[levelId];
+    resetState(conf, levelId);
+
+    // reset visuals
+    cageInterior.innerHTML='';
+    buildSeats(conf.count);
+    clearRoamingCats();
+    box.classList.remove('opened');
+    box.style.pointerEvents='auto';
+    instructions.classList.remove('hidden');
+    instructions.style.display='block';
+    overlay.classList.remove('active');
+    counterEl.textContent = '🐾 0 / ' + conf.count;
+    timerEl.textContent = conf.time;
+    timerPill.classList.remove('low');
+
+    screenStart.classList.remove('active');
+    screenGame.classList.add('active');
+
+    requestAnimationFrame(function(){
+      state.stageRect = stage.getBoundingClientRect();
+    });
+  }
+
+  function clearRoamingCats(){
+    var existing = stage.querySelectorAll('.cat');
+    existing.forEach(function(el){ el.remove(); });
+  }
+
+  window.addEventListener('resize', function(){
+    if(state) state.stageRect = stage.getBoundingClientRect();
+  });
+
+  /* ---------------- box open ---------------- */
+  box.addEventListener('click', function(){
+    if(!state || box.classList.contains('opened')) return;
+    box.classList.add('opened');
+    box.style.pointerEvents='none';
+    instructions.classList.add('hidden');
+    setTimeout(function(){ instructions.style.display='none'; }, 450);
+
+    setTimeout(function(){
+      spawnCats(state.conf.count);
+      startTimer();
+      state.lastTs = null;
+      state.rafId = requestAnimationFrame(loop);
+    }, 480);
+  });
+
+  /* ---------------- spawning ---------------- */
+  function spawnCats(n){
+    var rect = stage.getBoundingClientRect();
+    state.stageRect = rect;
+    for(var i=0;i<n;i++){
+      (function(idx){
+        var el = document.createElement('div');
+        el.className='cat';
+        el.style.width = el.style.height = state.conf.size;
+
+        var fur = FUR_PALETTE[Math.floor(Math.random()*FUR_PALETTE.length)];
+        el.style.setProperty('--fur-light', fur.light);
+        el.style.setProperty('--fur', fur.base);
+        el.style.setProperty('--fur-dark', fur.dark);
+        el.style.setProperty('--run-speed', (0.26 + Math.random()*0.14)+'s');
+
+        var critter = document.createElement('div');
+        critter.className='critter';
+        critter.innerHTML =
+          '<div class="c-shadow"></div>' +
+          '<div class="c-tail"></div>' +
+          '<div class="c-paw c-paw-bl"></div>' +
+          '<div class="c-paw c-paw-br"></div>' +
+          '<div class="c-body"></div>' +
+          '<div class="c-paw c-paw-fl"></div>' +
+          '<div class="c-paw c-paw-fr"></div>' +
+          '<div class="c-head">' +
+            '<div class="c-ear c-ear-l"></div>' +
+            '<div class="c-ear c-ear-r"></div>' +
+            '<div class="c-eye c-eye-l"></div>' +
+            '<div class="c-eye c-eye-r"></div>' +
+            '<div class="c-nose"></div>' +
+          '</div>';
+        el.appendChild(critter);
+
+        el.style.left='50%';
+        el.style.top='50%';
+
+        var angle = Math.random()*Math.PI*2;
+        var speed = rand(state.conf.speedMin, state.conf.speedMax);
+
+        var cat = {
+          id: 'c'+idx+'_'+Date.now(),
+          el: el,
+          emojiChar: CAT_EMOJIS[idx % CAT_EMOJIS.length], // used only once caged
+          x:50, y:50,
+          vx: Math.cos(angle)*speed,
+          vy: Math.sin(angle)*speed,
+          speed: speed,
+          nextTurn: performance.now() + rand(900,2400),
+          dragging:false,
+          settled:false
+        };
+
+        el.addEventListener('pointerdown', function(ev){ onCatDown(ev, cat); });
+
+        stage.appendChild(el);
+        state.cats.push(cat);
+      })(i);
+    }
+  }
+
+  function rand(a,b){ return a + Math.random()*(b-a); }
+
+  /* Kittens should scamper toward the lower-left/lower-right corners, never
+     straight down into the flat bottom edge. If a velocity falls inside a
+     narrow cone around "straight down", bend it out to the nearest edge of
+     that cone (keeping the same speed) so it reads as a corner run. */
+  var BOTTOM_CONE = Math.PI/7; // ~25.7deg half-angle around straight down
+  function avoidBottomFlat(vx, vy){
+    var down = Math.PI/2;
+    var diff = Math.atan2(vy, vx) - down;
+    diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+    if(Math.abs(diff) < BOTTOM_CONE){
+      var speed = Math.hypot(vx, vy);
+      var edge = down + (diff>=0 ? BOTTOM_CONE : -BOTTOM_CONE);
+      return { vx: Math.cos(edge)*speed, vy: Math.sin(edge)*speed };
+    }
+    return null;
+  }
+
+  /* ---------------- animation loop ---------------- */
+  function loop(ts){
+    if(!state || state.ended) return;
+    if(state.lastTs===null) state.lastTs = ts;
+    var dt = Math.min((ts - state.lastTs)/1000, 0.05);
+    state.lastTs = ts;
+
+    var rect = state.stageRect || stage.getBoundingClientRect();
+    var catList = state.cats;
+
+    for(var i=0;i<catList.length;i++){
+      var c = catList[i];
+      if(c.dragging || c.settled) continue;
+
+      // occasional retarget for organic wandering
+      if(ts > c.nextTurn){
+        var curAngle = Math.atan2(c.vy, c.vx);
+        var turn = (Math.random()-0.5) * Math.PI * 0.9;
+        var newAngle = curAngle + turn;
+        var sp = c.speed * rand(0.85,1.15);
+        c.vx = Math.cos(newAngle)*sp;
+        c.vy = Math.sin(newAngle)*sp;
+        c.nextTurn = ts + rand(900,2400);
+      }
+
+      c.x += c.vx*dt;
+      c.y += c.vy*dt;
+
+      var sizePx = c.el.offsetWidth || 60;
+      var halfPctX = (sizePx/2/rect.width)*100;
+      var halfPctY = (sizePx/2/rect.height)*100;
+
+      var minX = halfPctX, maxX = 100-halfPctX;
+      var minY = halfPctY, maxY = 100-halfPctY;
+
+      // reaching any edge is a permanent escape now — no more bouncing
+      // back in; the kitten is gone for good the instant it hits a border
+      if(c.x < minX || c.x > maxX || c.y < minY || c.y > maxY){
+        escapeCat(c);
+        continue;
+      }
+
+      var bent = avoidBottomFlat(c.vx, c.vy);
+      if(bent){ c.vx = bent.vx; c.vy = bent.vy; }
+
+      c.el.style.left = c.x+'%';
+      c.el.style.top = c.y+'%';
+      var flip = c.vx < 0 ? -1 : 1;
+      c.el.style.transform = 'scaleX('+flip+')';
+    }
+
+    state.rafId = requestAnimationFrame(loop);
+  }
+
+  /* ---------------- timer ---------------- */
+  function startTimer(){
+    updateTimerDisplay();
+    state.timerId = setInterval(function(){
+      state.timeLeft--;
+      updateTimerDisplay();
+      if(state.timeLeft<=0){
+        clearInterval(state.timerId);
+        endGame();
+      }
+    },1000);
+  }
+  function updateTimerDisplay(){
+    timerEl.textContent = Math.max(0,state.timeLeft);
+    timerPill.classList.toggle('low', state.timeLeft<=10);
+  }
+
+  /* ---------------- dragging ---------------- */
+  var activeDrag = null;
+
+  function onCatDown(ev, cat){
+    if(!state || state.ended || cat.settled) return;
+    ev.preventDefault();
+    cat.dragging = true;
+    activeDrag = cat;
+    cat.el.classList.add('dragging');
+
+    var r = cat.el.getBoundingClientRect();
+    cat.grabOffsetX = ev.clientX - r.left;
+    cat.grabOffsetY = ev.clientY - r.top;
+
+    // move into fixed drag layer so it can travel over the cage freely
+    stage.removeChild(cat.el);
+    cat.el.style.position='fixed';
+    cat.el.style.left = r.left+'px';
+    cat.el.style.top = r.top+'px';
+    cat.el.style.pointerEvents='auto';
+    dragLayer.appendChild(cat.el);
+
+    // listen on window (not the element) — reparenting the cat into the
+    // drag layer can silently drop element-level pointer capture in some
+    // desktop browsers, which is what made mouse dragging flaky before
+    window.addEventListener('pointermove', onCatMove);
+    window.addEventListener('pointerup', onCatUp);
+    window.addEventListener('pointercancel', onCatUp);
+  }
+
+  function onCatMove(ev){
+    var cat = activeDrag;
+    if(!cat || !cat.dragging) return;
+    cat.el.style.left = (ev.clientX - cat.grabOffsetX)+'px';
+    cat.el.style.top  = (ev.clientY - cat.grabOffsetY)+'px';
+  }
+
+  function onCatUp(ev){
+    var cat = activeDrag;
+    if(!cat || !cat.dragging) return;
+    cat.dragging = false;
+    activeDrag = null;
+    cat.el.classList.remove('dragging');
+    window.removeEventListener('pointermove', onCatMove);
+    window.removeEventListener('pointerup', onCatUp);
+    window.removeEventListener('pointercancel', onCatUp);
+
+    var catRect = cat.el.getBoundingClientRect();
+    var cageRect = cageWrap.getBoundingClientRect();
+    var cx = catRect.left + catRect.width/2;
+    var cy = catRect.top + catRect.height/2;
+
+    var inCage = cx > cageRect.left && cx < cageRect.right && cy > cageRect.top-10 && cy < cageRect.bottom+10;
+
+    if(inCage){
+      collectCat(cat);
+    }else{
+      releaseCat(cat, catRect);
+    }
+  }
+
+  function releaseCat(cat, catRect){
+    var rect = state.stageRect || stage.getBoundingClientRect();
+    var x = ((catRect.left + catRect.width/2) - rect.left)/rect.width*100;
+    var y = ((catRect.top + catRect.height/2) - rect.top)/rect.height*100;
+    x = Math.max(4, Math.min(96,x));
+    y = Math.max(4, Math.min(96,y));
+    cat.x = x; cat.y = y;
+
+    cat.el.style.position='absolute';
+    cat.el.style.left = x+'%';
+    cat.el.style.top = y+'%';
+    cat.el.style.pointerEvents='auto';
+    dragLayer.removeChild(cat.el);
+    stage.appendChild(cat.el);
+
+    var angle = Math.random()*Math.PI*2;
+    var sp = cat.speed * rand(0.9,1.1);
+    cat.vx = Math.cos(angle)*sp;
+    cat.vy = Math.sin(angle)*sp;
+    cat.nextTurn = performance.now() + rand(500,1200);
+  }
+
+  // round ends the moment no kitten is left roaming — whether every last
+  // one got caged, escaped, or some mix of both
+  function checkAllCatsGone(){
+    if(!state.ended && state.cats.length===0){
+      clearInterval(state.timerId);
+      endGame();
+    }
+  }
+
+  function escapeCat(cat){
+    cat.settled = true;
+    cat.el.classList.add('fleeing');
+    var pushX = cat.vx >= 0 ? 45 : -45;
+    var pushY = cat.vy >= 0 ? 45 : -45;
+    var tilt = pushX > 0 ? 22 : -22;
+    cat.el.style.transform = 'translate('+pushX+'cqw,'+pushY+'cqh) scale(.55) rotate('+tilt+'deg)';
+
+    state.cats = state.cats.filter(function(c){ return c.id!==cat.id; });
+
+    setTimeout(function(){
+      if(cat.el.parentNode) cat.el.parentNode.removeChild(cat.el);
+    }, 1000);
+
+    checkAllCatsGone();
+  }
+
+  function collectCat(cat){
+    cat.settled = true;
+    if(cat.el.parentNode) cat.el.parentNode.removeChild(cat.el);
+
+    var seat = state.seats[state.collected];
+    if(seat){
+      seat.textContent = cat.emojiChar;
+      seat.classList.add('filled');
+    }
+
+    state.cats = state.cats.filter(function(c){ return c.id!==cat.id; });
+    state.collected++;
+    counterEl.textContent = '🐾 ' + state.collected + ' / ' + state.total;
+
+    checkAllCatsGone();
+  }
+
+  /* ---------------- end game ---------------- */
+  function endGame(){
+    if(!state || state.ended) return;
+    state.ended = true;
+    if(state.rafId) cancelAnimationFrame(state.rafId);
+    if(state.timerId) clearInterval(state.timerId);
+
+    // remaining cats flee off screen
+    var remaining = state.cats.slice();
+    remaining.forEach(function(c){
+      c.el.classList.add('fleeing');
+      var dx = (c.x<50 ? -40 : 40);
+      var dy = (c.y<50 ? -40 : 40);
+      c.el.style.transform = 'translate('+dx+'cqw,'+dy+'cqh) scale(.6)';
+    });
+
+    var pct = state.total>0 ? Math.round((state.collected/state.total)*100) : 0;
+
+    setTimeout(function(){
+      remaining.forEach(function(c){ if(c.el.parentNode) c.el.parentNode.removeChild(c.el); });
+      showResult(pct);
+    }, remaining.length ? 850 : 150);
+  }
+
+  function showResult(pct){
+    var tier;
+    if(pct >= 100) tier='perfect';
+    else if(pct >= 80) tier='rose';
+    else if(pct >= 70) tier='heartThumb';
+    else if(pct >= 60) tier='heart';
+    else if(pct >= 50) tier='thumb';
+    else tier='cry';
+
+    var data = {
+      cry:        { mood:'cry',  gift:null, title:'Oh no...',        sub:'So many kittens got away. Mama cat is heartbroken.',
+                    quote:"...please, if you play again, bring my babies home." },
+      thumb:      { mood:'happy',gift:'🐾', title:'Not bad!',         sub:'You saved some kittens. Mama cat gives you a nod of approval.',
+                    quote:"Thank you for trying — a few of my little ones are safe because of you." },
+      heart:      { mood:'happy',gift:'❤️', title:'Great job!',       sub:'Mama cat is touched. Most of her babies are safe and warm.',
+                    quote:"Thank you for keeping so many of my babies safe and warm." },
+      heartThumb: { mood:'joy',  gift:'❤️', title:'Wonderful!',       sub:'Almost every kitten made it home. Mama cat is beaming.',
+                    quote:"You're wonderful — almost all of my babies came home safe!" },
+      rose:       { mood:'joy',  gift:'🌹', title:'Amazing rescue!',  sub:'Mama cat hands you a rose in gratitude.',
+                    quote:"Thank you for saving my babies! Please, take this rose — from me to you." },
+      perfect:    { mood:'joy',  gift:'💍', title:'Purrfect!',        sub:'Every single kitten is safe. Mama cat offers you her most precious gift.',
+                    quote:"Every single one of my babies is safe... thank you! Take this, my most precious gift." }
+    };
+
+    var d = data[tier];
+    mamaEmojis.innerHTML = catFaceHTML(d.mood, d.gift);
+    mamaEmojis.classList.remove('mood-cry','mood-joy');
+    mamaQuote.textContent = '"' + d.quote + '"';
+    resultTitle.textContent = d.title;
+    resultSub.textContent = d.sub;
+    resultScore.textContent = 'Rescued ' + state.collected + ' of ' + state.total + ' kittens — ' + pct + '%';
+
+    if(d.mood==='cry'){
+      mamaEmojis.classList.add('mood-cry');
+    }else if(d.mood==='joy'){
+      mamaEmojis.classList.add('mood-joy');
+    }
+    if(tier==='perfect' || tier==='rose'){ burstConfetti(); }
+
+    overlay.classList.add('active');
+  }
+
+  // mama built as one character — when she has a gift, her own paws hold
+  // it up to the player instead of a sticker floating beside her
+  function catFaceHTML(mood, gift){
+    var extra = '';
+    if(mood==='cry') extra = '<div class="cf-tear cf-tear-l"></div><div class="cf-tear cf-tear-r"></div>';
+    if(mood==='joy') extra += '<div class="cf-cheek cf-cheek-l"></div><div class="cf-cheek cf-cheek-r"></div>';
+    if(gift){
+      extra += '<div class="cf-paw-arm cf-paw-arm-l"></div>' +
+               '<div class="cf-paw-arm cf-paw-arm-r"></div>' +
+               '<div class="cf-gift">'+gift+'</div>';
+    }
+    return '<div class="cat-face cf-mood-'+mood+'">' +
+      '<div class="cf-ear cf-ear-l"></div>' +
+      '<div class="cf-ear cf-ear-r"></div>' +
+      '<div class="cf-head"></div>' +
+      '<div class="cf-eye cf-eye-l"></div>' +
+      '<div class="cf-eye cf-eye-r"></div>' +
+      '<div class="cf-nose"></div>' +
+      '<div class="cf-mouth"></div>' +
+      extra +
+    '</div>';
+  }
+
+  function burstConfetti(){
+    var emojis = ['✨','💛','🌟','🎀'];
+    for(var i=0;i<24;i++){
+      var s = document.createElement('div');
+      s.className='confetti';
+      s.textContent = emojis[Math.floor(Math.random()*emojis.length)];
+      s.style.left = Math.random()*100+'%';
+      s.style.animationDuration = (2.2+Math.random()*1.6)+'s';
+      s.style.animationDelay = (Math.random()*0.6)+'s';
+      overlay.appendChild(s);
+      (function(el){ setTimeout(function(){ el.remove(); }, 4200); })(s);
+    }
+  }
+
+  playAgainBtn.addEventListener('click', function(){
+    overlay.classList.remove('active');
+    overlay.querySelectorAll('.confetti').forEach(function(el){ el.remove(); });
+    screenGame.classList.remove('active');
+    screenStart.classList.add('active');
+    clearRoamingCats();
+    cageInterior.innerHTML='';
+  });
+
+})();
+</script>
+</body>
+</html>
